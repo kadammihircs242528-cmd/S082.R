@@ -1,0 +1,170 @@
+
+required_packages <- c("ggplot2","caret","randomForest","e1071","nnet")
+
+for(pkg in required_packages){
+  if(!require(pkg, character.only = TRUE)){
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+set.seed(123)
+
+
+
+Error_Type <- c("AI Bias","Prediction Error","Data Quality Error")
+Frequency <- c(32,38,30)
+
+data_desc <- data.frame(Error_Type,Frequency)
+data_desc$Percentage <- (data_desc$Frequency /
+                           sum(data_desc$Frequency))*100
+
+cat("=== DESCRIPTIVE DATA TABLE ===\n")
+print(data_desc)
+
+cat("\nTotal Errors:", sum(data_desc$Frequency))
+cat("\nMean Errors:", mean(data_desc$Frequency))
+cat("\nStandard Deviation:", sd(data_desc$Frequency),"\n")
+
+
+
+barplot(data_desc$Frequency,
+        names.arg = data_desc$Error_Type,
+        col = c("steelblue","orange","forestgreen"),
+        main = "AI Error Distribution",
+        ylab = "Frequency"
+
+pie(data_desc$Frequency,
+    labels = paste(data_desc$Error_Type,
+                   round(data_desc$Percentage,2),"%"),
+    col = c("steelblue","orange","forestgreen"),
+    main = "AI Error Percentage")
+
+cat("\n=== Chi-Square Test ===\n")
+print(chisq.test(data_desc$Frequency))
+
+
+ggplot(data_desc,
+       aes(x=Error_Type,y=Frequency,fill=Error_Type)) +
+  geom_bar(stat="identity") +
+  theme_minimal() +
+  ggtitle("AI Error Distribution (ggplot)")
+
+
+write.csv(data_desc,
+          "AI_Error_Descriptive.csv",
+          row.names = FALSE)
+
+
+n <- 300
+
+Data_Quality <- rnorm(n, mean=70, sd=10)
+Model_Accuracy <- rnorm(n, mean=75, sd=8)
+Training_Data_Size <- rnorm(n, mean=500, sd=100)
+Processing_Time <- rnorm(n, mean=20, sd=5)
+
+System_Type <- sample(c("AI Only","Hybrid"),
+                      n, replace=TRUE)
+
+Error_Type <- ifelse(Data_Quality < 65 &
+                       Processing_Time > 22,
+                     "Prediction Error",
+                     ifelse(Model_Accuracy < 70,
+                            "AI Bias",
+                            "Data Quality Error"))
+
+data_ml <- data.frame(
+  Data_Quality,
+  Model_Accuracy,
+  Training_Data_Size,
+  Processing_Time,
+  System_Type,
+  Error_Type
+)
+
+
+data_ml$Error_Type <- as.factor(data_ml$Error_Type)
+data_ml$System_Type <- as.factor(data_ml$System_Type)
+
+
+trainIndex <- createDataPartition(data_ml$Error_Type,
+                                  p=0.8,
+                                  list=FALSE)
+
+trainData <- data_ml[trainIndex,]
+testData <- data_ml[-trainIndex,]
+
+
+rf_model <- randomForest(Error_Type ~ .,
+                         data=trainData,
+                         ntree=200)
+
+rf_pred <- predict(rf_model, testData)
+
+cat("\n=== Random Forest Results ===\n")
+print(confusionMatrix(rf_pred, testData$Error_Type))
+
+print(importance(rf_model))
+varImpPlot(rf_model)
+
+
+svm_model <- svm(Error_Type ~ ., data=trainData)
+
+svm_pred <- predict(svm_model, testData)
+
+cat("\n=== SVM Results ===\n")
+print(confusionMatrix(svm_pred, testData$Error_Type))
+
+
+
+
+multi_model <- multinom(Error_Type ~ .,
+                        data=trainData,
+                        trace=FALSE)
+
+multi_pred <- predict(multi_model, testData)
+
+cat("\n=== Logistic Regression Results ===\n")
+print(confusionMatrix(multi_pred, testData$Error_Type))
+
+
+
+rf_accuracy <- sum(rf_pred == testData$Error_Type) /
+  nrow(testData)
+
+svm_accuracy <- sum(svm_pred == testData$Error_Type) /
+  nrow(testData)
+
+log_accuracy <- sum(multi_pred == testData$Error_Type) /
+  nrow(testData)
+
+
+cat("\nRandom Forest Accuracy:", rf_accuracy)
+cat("\nSVM Accuracy:", svm_accuracy)
+cat("\nLogistic Regression Accuracy:", log_accuracy)
+
+
+accuracy_data <- data.frame(
+  Model = c("Random Forest","SVM","Logistic"),
+  Accuracy = c(rf_accuracy,svm_accuracy,log_accuracy)
+)
+
+ggplot(accuracy_data,
+       aes(x=Model,y=Accuracy,fill=Model)) +
+  geom_bar(stat="identity") +
+  theme_minimal() +
+  ggtitle("Model Accuracy Comparison")
+
+
+
+best_model <- accuracy_data[which.max(accuracy_data$Accuracy),]
+
+cat("\nBest Model:\n")
+print(best_model)
+
+
+
+write.csv(data_ml,
+          "AI_Error_ML_Dataset.csv",
+          row.names = FALSE)
+
